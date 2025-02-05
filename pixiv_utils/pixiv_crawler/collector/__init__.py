@@ -1,5 +1,5 @@
 from .collector import Collector
 from .collector_unit import collect
-from .selectors import selectBookmark, selectKeyword, selectRanking, selectUser
+from .selectors import selectBookmark, selectKeyword, selectRanking, selectRankingPage, selectUser
 
-__all__ = ["Collector", "selectBookmark", "selectKeyword", "selectRanking", "selectUser", "collect"]
+__all__ = ["Collector", "selectBookmark", "selectKeyword", "selectRanking","selectRankingPage", "selectUser", "collect"]

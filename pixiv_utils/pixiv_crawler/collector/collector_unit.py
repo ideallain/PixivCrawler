@@ -6,7 +6,6 @@ import requests
 from pixiv_utils.pixiv_crawler.config import debug_config, download_config, network_config
 from pixiv_utils.pixiv_crawler.utils import assertWarn, printInfo, writeFailLog
 
-
 def collect(
     url: str, selector: Callable, additional_headers: Optional[Dict]
 ) -> Optional[Iterable[str]]:
@@ -33,6 +32,7 @@ def collect(
                 url, headers=headers, proxies=network_config.proxy, timeout=download_config.timeout
             )
 
+            printInfo(f"Collecting {url} {response.status_code}")
             if response.status_code == requests.status_codes.codes.ok:
                 id_group = selector(response)
                 if debug_config.verbose:

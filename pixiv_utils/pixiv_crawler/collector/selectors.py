@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from requests.models import Response
 
 from pixiv_utils.pixiv_crawler.utils import writeFailLog
+from pixiv_utils.pixiv_crawler.utils import printInfo
 
 
 def selectTag(response: Response) -> List[str]:
@@ -52,9 +53,59 @@ def selectRanking(response: Response) -> Set[str]:
     Returns:
         Set[str]: illust_id (image_id)
     """
+    printInfo("===== [selectRanking] =====")
+    printInfo(response.url)
     image_ids = [artwork["illust_id"] for artwork in response.json()["contents"]]
     return set(map(str, image_ids))
 
+# def selectRankingPage(response: Response) -> Set[str]:
+#     """
+#     Collect all illust_id (image_id) from ranking page (novel ranking) HTML content
+#     Sample url: https://www.pixiv.net/novel/ranking.php?mode=daily&content=novel&date=20230801&p=1
+
+#     Returns:
+#         Set[str]: illust_id (image_id)
+#     """
+#     # 使用正则表达式提取 illust_id
+#     print("[DEBUG] 进入 selectRankingPage 函数")
+#     image_ids = set()
+#     soup = BeautifulSoup(response.text, 'html.parser')
+
+#     # 获取每个作品的链接，假设这些链接包含在小说页面的 <a> 标签中
+#     for link in soup.find_all('a', href=True):
+#         match = re.search(r"show.php\?id=(\d+)", link['href'])
+#         if match:
+#             image_ids.add(match.group(1))
+    
+#         # 保存到 JSON 文件
+#     file_path = "novel_image_ids.json"
+#     with open(file_path, "w", encoding="utf-8") as f:
+#         json.dump(list(image_ids), f, indent=4, ensure_ascii=False)
+
+#     print(f"Saved image IDs to {file_path}")
+
+#     return image_ids
+def selectRankingPage(response: Response) -> Set[str]:
+    """
+    Collect all illust_id (image_id) from ranking page (novel ranking) HTML content
+    Sample url: https://www.pixiv.net/novel/ranking.php?mode=daily&content=novel&date=20230801&p=1
+
+    Returns:
+        Set[str]: illust_id (image_id)
+    """
+    print("[DEBUG] 进入 selectRankingPage 函数")
+
+    image_ids = set()
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # 获取每个作品的链接，匹配 "show.php?id=xxxx"
+    for link in soup.find_all('a', href=True):
+        match = re.search(r"show\.php\?id=(\d+)", link['href'])
+        if match:
+            image_ids.add(match.group(1))
+
+    # 不在这里写文件，而是返回给上层使用
+    return image_ids
 
 def selectUser(response: Response) -> Set[str]:
     """

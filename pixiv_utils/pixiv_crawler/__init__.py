@@ -1,4 +1,4 @@
-from .collector import Collector, collect, selectBookmark, selectKeyword, selectRanking, selectUser
+from .collector import Collector, collect, selectBookmark, selectKeyword, selectRanking, selectRankingPage, selectUser
 from .config import (
     debug_config,
     displayAllConfig,
@@ -28,6 +28,7 @@ __all__ = [
     "selectUser",
     "selectBookmark",
     "selectRanking",
+    "selectRankingPage",
     "selectKeyword",
     "Downloader",
     "downloadImage",

@@ -24,13 +24,14 @@ def downloadRanking():
     Args:
         capacity (int): flow capacity, default is 1024MB
     """
-    user_config.user_id = ""
-    user_config.cookie = ""
+    # user_config.user_id = ""
+    # user_config.cookie = ""
     download_config.with_tag = False
-    ranking_config.start_date = datetime.date(2024, 5, 1)
-    ranking_config.range = 2
+    download_config.num_threads = 12
+    ranking_config.start_date = datetime.date(2024, 12, 1)
+    ranking_config.range = 30
     ranking_config.mode = "weekly"
-    ranking_config.content_mode = "illust"
+    ranking_config.content_mode = "novel"
     ranking_config.num_artwork = 50
 
     displayAllConfig()
@@ -51,8 +52,8 @@ def downloadBookmark():
         capacity (int): flow capacity, default is 1024MB
     """
     download_config.with_tag = False
-    user_config.user_id = "[TODO]: Your user_id here"
-    user_config.cookie = "[TODO]: Your cookie here"
+    # user_config.user_id = "[TODO]: Your user_id here"
+    # user_config.cookie = "[TODO]: Your cookie here"
 
     displayAllConfig()
     checkDir(download_config.store_path)
@@ -71,14 +72,14 @@ def downloadUser():
         artist_id (str): artist id
         capacity (int): flow capacity, default is 1024MB
     """
-    user_config.user_id = ""
-    user_config.cookie = ""
+    # user_config.user_id = ""
+    # user_config.cookie = ""
     download_config.with_tag = False
 
     displayAllConfig()
     checkDir(download_config.store_path)
 
-    app = UserCrawler(artist_id="32548944", capacity=200)
+    app = UserCrawler(artist_id="16552303", capacity=200)
     app.run()
 
 
@@ -97,8 +98,8 @@ def downloadKeyword():
         n_images (int): max download number, default is 200
         capacity (int): flow capacity, default is 1024MB
     """
-    user_config.user_id = ""
-    user_config.cookie = ""
+    # user_config.user_id = ""
+    # user_config.cookie = ""
     download_config.with_tag = False
 
     displayAllConfig()
@@ -133,9 +134,9 @@ def loadEnv():
 
 
 if __name__ == "__main__":
-    # loadEnv()
+    loadEnv()
 
     downloadRanking()
-    downloadBookmark()
-    downloadUser()
-    downloadKeyword()
+    # downloadBookmark()
+    # downloadUser()
+    # downloadKeyword()
