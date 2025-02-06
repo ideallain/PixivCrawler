@@ -93,7 +93,6 @@ def selectRankingPage(response: Response) -> Set[str]:
     Returns:
         Set[str]: illust_id (image_id)
     """
-    print("[DEBUG] 进入 selectRankingPage 函数")
 
     image_ids = set()
     soup = BeautifulSoup(response.text, 'html.parser')

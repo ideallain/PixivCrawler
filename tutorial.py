@@ -28,8 +28,8 @@ def downloadRanking():
     # user_config.cookie = ""
     download_config.with_tag = False
     download_config.num_threads = 12
-    ranking_config.start_date = datetime.date(2024, 12, 1)
-    ranking_config.range = 30
+    ranking_config.start_date = datetime.date(2025, 2, 6)
+    ranking_config.range = 1
     ranking_config.mode = "weekly"
     ranking_config.content_mode = "novel"
     ranking_config.num_artwork = 50

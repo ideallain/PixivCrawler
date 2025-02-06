@@ -5,12 +5,114 @@ import json
 from typing import Set, Union
 
 import tqdm
-
 from pixiv_utils.pixiv_crawler.collector import Collector, collect, selectRanking, selectRankingPage
 from pixiv_utils.pixiv_crawler.config import download_config, ranking_config, user_config
 from pixiv_utils.pixiv_crawler.downloader import Downloader
 from pixiv_utils.pixiv_crawler.utils import printInfo
+# for test 
+from bs4 import BeautifulSoup
+from ebooklib import epub
+import requests
+from requests.models import Response
+def metaPreloadDataToEpub(response: Response, epub_filename: str) -> None:
+    """
+    1. 在 HTML 中找到 <meta name="preload-data" id="meta-preload-data" content="...">
+    2. 读取其 content 属性（JSON字符串）
+    3. 解析 JSON (形如 {"novel": {"23933501": {...}}} )
+    4. 在其中找到 content 字段（即小说正文）并生成 EPUB
+    """
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # 1) 找到指定 meta 标签
+    meta_tag = soup.find('meta', attrs={'name': 'preload-data', 'id': 'meta-preload-data'})
+    if not meta_tag:
+        print("[INFO] 未找到 <meta name='preload-data' id='meta-preload-data' ...> 标签.")
+        return
+    
+    # 2) 读取其 content 属性（即 JSON 字符串）
+    json_str = meta_tag.get("content")
+    if not json_str:
+        print("[INFO] meta-preload-data 标签中没有 content 属性，或属性值为空.")
+        return
 
+    # 3) 解析 JSON
+    try:
+        parsed_data = json.loads(json_str)
+    except json.JSONDecodeError as e:
+        print("[ERROR] meta-preload-data 中的内容不是合法 JSON:", e)
+        return
+
+    # 4) 获取 novel 字段，并取第一个 novel_id
+    novel_data = parsed_data.get("novel")
+    if not novel_data or not isinstance(novel_data, dict):
+        print("[INFO] JSON 中未发现 'novel' 对象.")
+        return
+
+    # 如果只需要处理一个 id，这里演示取第一个 key
+    # 若需要批量处理，可自行遍历 novel_data.keys()
+    first_id = next(iter(novel_data))
+    novel_info = novel_data.get(first_id, {})
+    if not novel_info:
+        print("[INFO] novel_data 中对应的小说信息为空.")
+        return
+
+    # 5) 拿到 content 字段的正文
+    content_text = novel_info.get("content")
+    if not content_text:
+        print("[INFO] novel_info 中没有 'content' 字段.")
+        return
+
+    # 6) 生成 EPUB
+    book = epub.EpubBook()
+    book.set_identifier("novel-epub-id")
+    book.set_language("zh")
+    # 从 novel_info 中取 title/userName 以便更好地生成元信息
+    title = novel_info.get("title", "无标题小说")
+    author = novel_info.get("userName", "PixivCrawler")
+
+    book.set_title(title)
+    book.add_author(author)
+
+    # 创建一个章节，章节内容即 content_text
+    chapter = epub.EpubHtml(title="正文", file_name="chapter1.xhtml", lang="zh")
+    chapter.content = content_text  # 如果是纯文本，可能需要转义或包裹 <p> 等标签
+
+    book.add_item(chapter)
+
+    # 设置目录与导航
+    book.toc = (epub.Link('chapter1.xhtml', '正文', 'chapter1'),)
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+
+    # 阅读顺序
+    book.spine = ['nav', chapter]
+
+    # 写入 EPUB 文件
+    epub.write_epub(epub_filename, book, {})
+    print(f"[INFO] 已生成 EPUB 文件: {epub_filename}")
+
+def fetchNovelAndGenerateEpub(novel_id: str):
+    """
+    根据小说 ID 构造阅读页URL, 请求后调用 selectCharcoalTokenAndGenerateEpub 生成 EPUB。
+    注意：如果有自定义Header或Cookie，需要在此处理。
+    """
+    # Pixiv 的小说阅读 URL
+    url = f"https://www.pixiv.net/novel/show.php?id={novel_id}"
+
+    headers = {
+        "Referer": "https://www.pixiv.net/novel/",
+        "x-requested-with": "XMLHttpRequest",
+        "COOKIE": user_config.cookie,  # 如果需要 Pixiv 登录态
+    }
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        # 生成 epub 文件名，可根据小说ID来命名
+        epub_filename = f"novel_{novel_id}.epub"
+        metaPreloadDataToEpub(response, epub_filename)
+    except Exception as e:
+        printInfo(f"抓取小说 {novel_id} 出错: {e}")
 
 class RankingCrawler:
     def __init__(self, capacity: float = 1024):
@@ -114,73 +216,22 @@ class RankingCrawler:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(list(all_image_ids), f, indent=4, ensure_ascii=False)
             printInfo(f"全部小说 ID 已保存到 {file_path}")
+
+            # 新起线程池，再次请求「小说详情页」生成 EPUB
+            printInfo(f"开始并行抓取 {len(all_image_ids)} 篇小说原文并生成 EPUB...")
+            with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
+                future_list2 = [
+                    executor.submit(fetchNovelAndGenerateEpub, novel_id)
+                    for novel_id in all_image_ids
+                ]
+                for _ in futures.as_completed(future_list2):
+                    pass  # 在这里可做进度更新或错误处理
         
         # 也可以把 all_image_ids 加入 collector
         self.collector.add(all_image_ids)
 
         printInfo(f"===== Collect {content} ranking complete =====")
 
-    # def _collect(self, artworks_per_json: int = 50):
-    #     """
-    #     Collect illust_id from ranking
-
-    #     Args:
-    #         artworks_per_json: Number of artworks per ranking.json. Defaults to 50.
-    #     """
-    #     num_page = (ranking_config.num_artwork - 1) // artworks_per_json + 1  # ceil
-    #     printInfo(f"Collecting {self.content} ranking from {num_page} pages")
-
-    #     def addDate(current: datetime.date, days):
-    #         return current + datetime.timedelta(days)
-
-    #     content = f"{self.mode}:{self.content}"
-    #     printInfo(f"===== Start collecting {content} ranking =====")
-    #     printInfo(
-    #         "From {} to {}".format(
-    #             self.date.strftime("%Y-%m-%d"),
-    #             addDate(self.date, self.range - 1).strftime("%Y-%m-%d"),
-    #         )
-    #     )
-
-    #     urls: Set[str] = set()
-    #     for _ in range(self.range):
-    #         for i in range(num_page):
-    #             urls.add(self.url_template.format(self.date.strftime("%Y%m%d"), i + 1))
-    #         self.date = addDate(self.date, 1)
-    #     printInfo(f"{download_config.num_threads} threads are used to collect {content} ranking")
-    #     with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
-    #         with tqdm.trange(len(urls), desc=f"Collecting {self.content} ids") as pbar:
-    #             additional_headers = [
-    #                 {
-    #                     "Referer": re.search("(.*)&p", url).group(1),
-    #                     "x-requested-with": "XMLHttpRequest",
-    #                     "COOKIE": user_config.cookie,
-    #                 }
-    #                 for url in urls
-    #             ]
-    #             image_ids_futures = []
-                
-    #             # Check if content is "novel", use selectRankingPage for novels
-    #             if self.content == "novel":
-    #                 printInfo(f"Collecting {self.content} {urls} ranking page...")
-    #                 image_ids_futures = [
-    #                     executor.submit(collect, url, selectRankingPage, additional_header)
-    #                     for url, additional_header in zip(urls, additional_headers)
-    #                 ]
-    #             else:
-    #                 printInfo(f"Collecting {self.content} ranking...")
-    #                 image_ids_futures = [
-    #                     executor.submit(collect, url, selectRanking, additional_header)
-    #                     for url, additional_header in zip(urls, additional_headers)
-    #                 ]
-
-    #             for future in futures.as_completed(image_ids_futures):
-    #                 image_ids = future.result()
-    #                 if image_ids is not None:
-    #                     self.collector.add(image_ids)
-    #                 pbar.update()
-
-    #     printInfo(f"===== Collect {content} ranking complete =====")
 
     def run(self) -> Union[Set[str], float]:
         """
