@@ -10,10 +10,32 @@ from pixiv_utils.pixiv_crawler.config import download_config, ranking_config, us
 from pixiv_utils.pixiv_crawler.downloader import Downloader
 from pixiv_utils.pixiv_crawler.utils import printInfo
 # for test 
+from kafka import KafkaProducer  # 来自 kafka-python
 from bs4 import BeautifulSoup
 from ebooklib import epub
 import requests
 from requests.models import Response
+
+
+# ========== (1) 全局或单例的 KafkaProducer 缓存 ==========
+
+_producer = None  # 用于缓存 KafkaProducer 的全局变量
+
+def getKafkaProducer() -> KafkaProducer:
+    """
+    如果 _producer 为空则创建并缓存，否则直接返回已创建的 Producer。
+    """
+    global _producer
+    if _producer is None:
+        # 仅在第一次调用时实例化
+        _producer = KafkaProducer(
+            bootstrap_servers=['localhost:9092'],  # 修改为你的 Kafka broker 地址
+            # 发送原始字节数组时不需要再 json.dumps()，这里的序列化可以只做 encode
+            # 如果你想发送原始字符串，参考下行:
+            # value_serializer=lambda v: v.encode('utf-8')  
+        )
+    return _producer
+
 def metaPreloadDataToEpub(response: Response, epub_filename: str) -> None:
     """
     1. 在 HTML 中找到 <meta name="preload-data" id="meta-preload-data" content="...">
@@ -114,6 +136,55 @@ def fetchNovelAndGenerateEpub(novel_id: str):
     except Exception as e:
         printInfo(f"抓取小说 {novel_id} 出错: {e}")
 
+def fetchNovelAndSendToKafka(novel_id: str):
+    """
+    根据小说ID抓取阅读页 show.php?id=xxx, 
+    直接提取 <meta name='preload-data' ...> 的 content (json_str) 并发送到 Kafka 的 'crawler-pixiv' 主题。
+    """
+    # Pixiv 的小说阅读 URL
+    url = f"https://www.pixiv.net/novel/show.php?id={novel_id}"
+    headers = {
+        "Referer": "https://www.pixiv.net/novel/",
+        "x-requested-with": "XMLHttpRequest",
+        "COOKIE": user_config.cookie or "",  # 如果需要 Pixiv 登录态
+    }
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+    except Exception as e:
+        printInfo(f"[WARN] 抓取小说页面({novel_id})出错: {e}")
+        return
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+    meta_tag = soup.find('meta', attrs={'name': 'preload-data', 'id': 'meta-preload-data'})
+    if not meta_tag:
+        printInfo("[INFO] 未找到 <meta name='preload-data' id='meta-preload-data' ...> 标签.")
+        return
+
+    # 直接获取 meta 中的 content 属性（原始 JSON 字符串）
+    json_str = meta_tag.get("content")
+    if not json_str:
+        printInfo("[INFO] meta-preload-data 标签中没有 content 或为空.")
+        return
+
+    # ========== (2) 直接发送原始 JSON 字符串到 Kafka ==========
+
+    producer = getKafkaProducer()  # 获取(或创建)全局的 KafkaProducer
+    future = producer.send(
+        'crawler-pixiv',
+        json_str.encode('utf-8')  # 将字符串手动转为 bytes
+        # 可以考虑 key=novel_id.encode('utf-8') 等作为分区键
+    )
+
+    try:
+        record_metadata = future.get(timeout=10)
+        printInfo(
+            f"[INFO] 已将 novel_id={novel_id} 的 meta-preload-data 发送到 Kafka "
+            f"(topic={record_metadata.topic}, partition={record_metadata.partition}, offset={record_metadata.offset})"
+        )
+    except Exception as e:
+        printInfo(f"[ERROR] 发送到 Kafka 出错: {e}")
 class RankingCrawler:
     def __init__(self, capacity: float = 1024):
         """
@@ -218,15 +289,24 @@ class RankingCrawler:
             printInfo(f"全部小说 ID 已保存到 {file_path}")
 
             # 新起线程池，再次请求「小说详情页」生成 EPUB
-            printInfo(f"开始并行抓取 {len(all_image_ids)} 篇小说原文并生成 EPUB...")
+            # printInfo(f"开始并行抓取 {len(all_image_ids)} 篇小说原文并生成 EPUB...")
+            # with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
+            #     future_list2 = [
+            #         executor.submit(fetchNovelAndGenerateEpub, novel_id)
+            #         for novel_id in all_image_ids
+            #     ]
+            #     for _ in futures.as_completed(future_list2):
+            #         pass  # 在这里可做进度更新或错误处理
+
+            # 也可在这里并行调用 fetchNovelAndSendToKafka 进行发送 Kafka (视需求而定)
+            printInfo(f"开始并行抓取 {len(all_image_ids)} 篇小说并发送至 Kafka...")
             with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
-                future_list2 = [
-                    executor.submit(fetchNovelAndGenerateEpub, novel_id)
+                future_list3 = [
+                    executor.submit(fetchNovelAndSendToKafka, novel_id)
                     for novel_id in all_image_ids
                 ]
-                for _ in futures.as_completed(future_list2):
-                    pass  # 在这里可做进度更新或错误处理
-        
+                for _ in futures.as_completed(future_list3):
+                    pass 
         # 也可以把 all_image_ids 加入 collector
         self.collector.add(all_image_ids)
 
