@@ -1,6 +1,7 @@
 import dataclasses
 import datetime
 import pprint
+import os
 from typing import Dict, Tuple
 
 from .utils import printInfo
@@ -19,16 +20,16 @@ class RankingConfig:
         "monthly",
         "male",
         "female",
-        "daily_ai",
-        "daily_r18",
-        "weekly_r18",
-        "male_r18",
-        "female_r18",
-        "daily_r18_ai",
+        # "daily_ai",
+        # "daily_r18",
+        # "weekly_r18",
+        # "male_r18",
+        # "female_r18",
+        # "daily_r18_ai",
     )
     mode: str = "daily"  # Choose from the above
     # Illustration, manga, ugoira, all
-    content_modes: Tuple = ("all", "illust", "manga", "ugoira")
+    content_modes: Tuple = ("all", "illust", "manga", "novel", "ugoira")
     content_mode: str = "all"  # Choose from the above
     # Download top k in each ranking
     num_artwork: int = 50
@@ -63,9 +64,9 @@ class NetworkConfig:
 @dataclasses.dataclass
 class UserConfig:
     # Access your pixiv user profile to find this, e.g. https://www.pixiv.net/users/xxxx
-    user_id: str = ""
+    user_id: str = os.getenv("PIXIV_UID", "")
     # Your cookie, you can find it in the browser developer tool (README for more details)
-    cookie: str = ""
+    cookie: str = os.getenv("PIXIV_COOKIE", "")
 
 
 @dataclasses.dataclass
