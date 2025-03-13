@@ -2,7 +2,8 @@ import concurrent.futures as futures
 import datetime
 import re
 import json
-from typing import Set, Union
+import os
+from typing import Set, Union, List
 
 import tqdm
 from pixiv_utils.pixiv_crawler.collector import Collector, collect, selectRanking, selectRankingPage
@@ -136,11 +137,26 @@ def fetchNovelAndGenerateEpub(novel_id: str):
     except Exception as e:
         printInfo(f"抓取小说 {novel_id} 出错: {e}")
 
-def fetchNovelAndSendToKafka(novel_id: str):
+def fetchNovelAndSaveToJson(novel_id: str, output_dir: str = "novels_json"):
     """
     根据小说ID抓取阅读页 show.php?id=xxx, 
-    直接提取 <meta name='preload-data' ...> 的 content (json_str) 并发送到 Kafka 的 'crawler-pixiv' 主题。
+    直接提取 <meta name='preload-data' ...> 的 content (json_str) 并保存到JSON文件。
+    
+    Args:
+        novel_id (str): 小说ID
+        output_dir (str): 输出目录，默认为 "novels_json"
     """
+    # 确保输出目录存在
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 构造输出文件路径
+    output_file = os.path.join(output_dir, f"novel_{novel_id}.json")
+    
+    # 如果文件已存在，跳过抓取
+    if os.path.exists(output_file):
+        printInfo(f"[INFO] 小说 {novel_id} 的JSON文件已存在，跳过抓取")
+        return
+    
     # Pixiv 的小说阅读 URL
     url = f"https://www.pixiv.net/novel/show.php?id={novel_id}"
     headers = {
@@ -159,32 +175,74 @@ def fetchNovelAndSendToKafka(novel_id: str):
     soup = BeautifulSoup(response.text, 'html.parser')
     meta_tag = soup.find('meta', attrs={'name': 'preload-data', 'id': 'meta-preload-data'})
     if not meta_tag:
-        printInfo("[INFO] 未找到 <meta name='preload-data' id='meta-preload-data' ...> 标签.")
+        printInfo(f"[INFO] 未找到小说 {novel_id} 的 meta-preload-data 标签")
         return
 
-    # 直接获取 meta 中的 content 属性（原始 JSON 字符串）
+    # 获取 meta 中的 content 属性（原始 JSON 字符串）
     json_str = meta_tag.get("content")
     if not json_str:
-        printInfo("[INFO] meta-preload-data 标签中没有 content 或为空.")
+        printInfo(f"[INFO] 小说 {novel_id} 的 meta-preload-data 标签中没有 content 或为空")
         return
 
-    # ========== (2) 直接发送原始 JSON 字符串到 Kafka ==========
-
-    producer = getKafkaProducer()  # 获取(或创建)全局的 KafkaProducer
-    future = producer.send(
-        'crawler-pixiv',
-        json_str.encode('utf-8')  # 将字符串手动转为 bytes
-        # 可以考虑 key=novel_id.encode('utf-8') 等作为分区键
-    )
-
     try:
-        record_metadata = future.get(timeout=10)
-        printInfo(
-            f"[INFO] 已将 novel_id={novel_id} 的 meta-preload-data 发送到 Kafka "
-            f"(topic={record_metadata.topic}, partition={record_metadata.partition}, offset={record_metadata.offset})"
-        )
+        # 解析 JSON 以确保格式正确
+        parsed_data = json.loads(json_str)
+        
+        # 将解析后的数据保存到文件
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(parsed_data, f, indent=4, ensure_ascii=False)
+        
+        printInfo(f"[INFO] 已将小说 {novel_id} 的数据保存到 {output_file}")
+    except json.JSONDecodeError as e:
+        printInfo(f"[ERROR] 小说 {novel_id} 的数据不是合法 JSON: {e}")
     except Exception as e:
-        printInfo(f"[ERROR] 发送到 Kafka 出错: {e}")
+        printInfo(f"[ERROR] 保存小说 {novel_id} 的数据时出错: {e}")
+
+def processNovelIdsFromFile(ids_file: str, output_dir: str = "novels_json", num_threads: int = None):
+    """
+    从指定的JSON文件中读取小说ID列表，并并行抓取每个小说的数据保存为独立的JSON文件
+    
+    Args:
+        ids_file (str): 包含小说ID列表的JSON文件路径
+        output_dir (str): 输出目录，默认为 "novels_json"
+        num_threads (int): 并行线程数，默认使用配置中的线程数
+    """
+    # 确保输出目录存在
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 使用配置中的线程数或指定的线程数
+    threads = num_threads if num_threads is not None else download_config.num_threads
+    
+    try:
+        # 读取小说ID列表
+        with open(ids_file, "r", encoding="utf-8") as f:
+            novel_ids = json.load(f)
+        
+        if not isinstance(novel_ids, list):
+            printInfo(f"[ERROR] {ids_file} 的内容不是有效的ID列表")
+            return
+        
+        printInfo(f"[INFO] 从 {ids_file} 中读取到 {len(novel_ids)} 个小说ID")
+        
+        # 并行抓取每个小说的数据
+        printInfo(f"[INFO] 开始并行抓取 {len(novel_ids)} 篇小说数据，使用 {threads} 个线程...")
+        
+        with futures.ThreadPoolExecutor(threads) as executor:
+            with tqdm.tqdm(total=len(novel_ids), desc="抓取小说数据") as pbar:
+                future_list = [
+                    executor.submit(fetchNovelAndSaveToJson, novel_id, output_dir)
+                    for novel_id in novel_ids
+                ]
+                
+                for future in futures.as_completed(future_list):
+                    # 更新进度条
+                    pbar.update(1)
+        
+        printInfo(f"[INFO] 所有小说数据抓取完成，已保存到 {output_dir} 目录")
+        
+    except Exception as e:
+        printInfo(f"[ERROR] 处理小说ID列表时出错: {e}")
+
 class RankingCrawler:
     def __init__(self, capacity: float = 1024):
         """
@@ -220,6 +278,7 @@ class RankingCrawler:
 
         self.downloader = Downloader(capacity)
         self.collector = Collector(self.downloader)
+        
     def _collect(self, artworks_per_json: int = 50):
         num_page = (ranking_config.num_artwork - 1) // artworks_per_json + 1  # ceil
 
@@ -288,25 +347,22 @@ class RankingCrawler:
                 json.dump(list(all_image_ids), f, indent=4, ensure_ascii=False)
             printInfo(f"全部小说 ID 已保存到 {file_path}")
 
-            # 新起线程池，再次请求「小说详情页」生成 EPUB
-            # printInfo(f"开始并行抓取 {len(all_image_ids)} 篇小说原文并生成 EPUB...")
-            # with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
-            #     future_list2 = [
-            #         executor.submit(fetchNovelAndGenerateEpub, novel_id)
-            #         for novel_id in all_image_ids
-            #     ]
-            #     for _ in futures.as_completed(future_list2):
-            #         pass  # 在这里可做进度更新或错误处理
-
-            # 也可在这里并行调用 fetchNovelAndSendToKafka 进行发送 Kafka (视需求而定)
-            printInfo(f"开始并行抓取 {len(all_image_ids)} 篇小说并发送至 Kafka...")
+            # 使用新的函数保存小说数据到JSON文件
+            output_dir = "novels_json"
+            printInfo(f"开始并行抓取 {len(all_image_ids)} 篇小说并保存为JSON文件...")
+            
+            os.makedirs(output_dir, exist_ok=True)
             with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
                 future_list3 = [
-                    executor.submit(fetchNovelAndSendToKafka, novel_id)
+                    executor.submit(fetchNovelAndSaveToJson, novel_id, output_dir)
                     for novel_id in all_image_ids
                 ]
-                for _ in futures.as_completed(future_list3):
-                    pass 
+                with tqdm.tqdm(total=len(all_image_ids), desc="抓取小说JSON") as pbar:
+                    for _ in futures.as_completed(future_list3):
+                        pbar.update(1)
+            
+            printInfo(f"所有小说数据已保存到 {output_dir} 目录")
+            
         # 也可以把 all_image_ids 加入 collector
         self.collector.add(all_image_ids)
 
@@ -325,3 +381,24 @@ class RankingCrawler:
         print("[DEBUG] after self._collect()")
         # self.collector.collect()
         return self.downloader.download()
+
+# 命令行入口点，支持从文件读取ID列表并处理
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Pixiv Novel Crawler")
+    parser.add_argument("--ids-file", help="从指定的JSON文件中读取小说ID列表")
+    parser.add_argument("--output-dir", default="novels_json", help="输出目录，默认为 novels_json")
+    parser.add_argument("--threads", type=int, help="并行线程数，默认使用配置中的线程数")
+    parser.add_argument("--ranking", action="store_true", help="从排行榜抓取小说")
+    
+    args = parser.parse_args()
+    
+    if args.ids_file:
+        processNovelIdsFromFile(args.ids_file, args.output_dir, args.threads)
+    elif args.ranking:
+        # 从排行榜抓取
+        crawler = RankingCrawler()
+        crawler.run()
+    else:
+        print("请指定 --ids-file 参数读取ID列表或使用 --ranking 从排行榜抓取")

@@ -1,0 +1,73 @@
+[
+  {
+    "type": "cover",
+    "url": "https://i.pximg.net/c/260x260/img-master/img/2021/02/24/01/50/06/88007996_p0_square1200.jpg"
+  },
+  {
+    "type": "entry",
+    "text": "Regulus Corneas"
+  },
+  {
+    "type": "h2",
+    "text": "Profile",
+    "children": []
+  },
+  {
+    "type": "h2",
+    "text": "Article in Other Language",
+    "children": [
+      {
+        "type": "p",
+        "text": "レグルス・コルニアス"
+      }
+    ]
+  },
+  {
+    "type": "ref",
+    "parent": [
+      {
+        "title": "",
+        "link": "/en/a/Sin%20Archbishops",
+        "img": "https://i.pximg.net/c/128x128/img-master/img/2024/04/23/23/43/07/118104451_p0_square1200.jpg"
+      }
+    ],
+    "child": [],
+    "sibling": [
+      {
+        "title": "",
+        "link": "/en/a/Capella%20Emerada%20Lugunica",
+        "img": "https://i.pximg.net/c/128x128/img-master/img/2024/10/25/17/46/50/123659873_p0_square1200.jpg"
+      },
+      {
+        "title": "",
+        "link": "/en/a/Rui%20Arneb",
+        "img": "https://i.pximg.net/c/128x128/img-master/img/2023/08/10/04/52/17/110689658_p0_square1200.jpg"
+      },
+      {
+        "title": "",
+        "link": "/en/a/Sirius%20Romanee-Conti",
+        "img": "https://i.pximg.net/c/128x128/img-master/img/2024/11/19/05/45/31/124435895_p0_square1200.jpg"
+      },
+      {
+        "title": "",
+        "link": "/en/a/Roy%20Alphard",
+        "img": "https://i.pximg.net/c/128x128/img-master/img/2024/11/27/20/53/47/124684473_p0_square1200.jpg"
+      },
+      {
+        "title": "",
+        "link": "/en/a/Petelgeuse%20Romanee-Conti",
+        "img": "https://i.pximg.net/c/128x128/img-master/img/2016/08/28/01/04/53/58680960_p0_square1200.jpg"
+      },
+      {
+        "title": "",
+        "link": "/en/a/Lye%20Batenkaitos",
+        "img": "https://i.pximg.net/c/128x128/img-master/img/2020/06/25/01/30/59/82544920_p0_square1200.jpg"
+      },
+      {
+        "title": "",
+        "link": "/en/a/Stride%20Vollachia",
+        "img": "https://i.pximg.net/c/128x128/img-master/img/2021/11/27/02/00/19/94395425_p0_square1200.jpg"
+      }
+    ]
+  }
+]
