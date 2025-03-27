@@ -476,7 +476,7 @@ class RankingCrawler:
                             if "novelId" in novel:
                                 all_novel_ids.add(novel["novelId"])
                             elif "latestEpisodeId" in novel:
-                                all_novel_data.add(novel["latestEpisodeId"])
+                                all_novel_ids.add(novel["latestEpisodeId"])
                     
                     pbar.update(1)
         

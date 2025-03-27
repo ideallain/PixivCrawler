@@ -98,14 +98,14 @@ class PixivCrawlerGUI:
         self.mode_var = tk.StringVar(value="ranking")
         self.radio_frame = tk.Frame(master)
         self.radio_frame.pack(pady=10)
-
-        tk.Label(self.radio_frame, text="选择下载模式：").pack(anchor="w")
+        #选择下载模式
+        tk.Label(self.radio_frame, text="ダウンロードモード選択：").pack(anchor="w")
         modes = [
-            ("排行榜", "ranking"),
-            ("收藏", "bookmark"),
-            ("指定用户", "user"),
-            ("关键字搜索", "keyword"),
-            ("排行榜（推荐）", "recommends")
+            ("ランキング", "ranking"),
+            ("お気に入り", "bookmark"),
+            ("ユーザー指定", "user"),
+            ("キーワード検索", "keyword"),
+            ("ランキング（オススメ）", "recommends")
         ]
         for text, mode in modes:
             tk.Radiobutton(self.radio_frame, text=text, variable=self.mode_var, value=mode, command=self.update_fields).pack(anchor="w")
@@ -128,20 +128,20 @@ class PixivCrawlerGUI:
 
         # 排行榜推荐时的推荐标签和最大页数
         self.recommends_frame = tk.Frame(self.param_frame)
-        tk.Label(self.recommends_frame, text="推荐标签（逗号分隔）:").pack(side="left")
+        tk.Label(self.recommends_frame, text="検索キーワード（半角コンマで区切ると並行検索可能）:").pack(side="left")
         self.tags_entry = tk.Entry(self.recommends_frame)
         self.tags_entry.pack(side="left")
-        tk.Label(self.recommends_frame, text="最大页数:").pack(side="left")
+        tk.Label(self.recommends_frame, text="ページ数:").pack(side="left")
         self.max_pages_entry = tk.Entry(self.recommends_frame, width=5)
         self.max_pages_entry.insert(0, "5")
         self.max_pages_entry.pack(side="left")
 
         # 开始下载按钮
-        self.start_button = tk.Button(master, text="Start Download", command=self.start_download)
+        self.start_button = tk.Button(master, text="ダウンロード開始", command=self.start_download)
         self.start_button.pack(pady=10)
 
         # 环境配置区域（用于配置 Proxy、PIXIV_UID 和 PIXIV_COOKIE）
-        self.config_frame = tk.LabelFrame(master, text="环境配置", padx=10, pady=10)
+        self.config_frame = tk.LabelFrame(master, text="環境設定", padx=10, pady=10)
         self.config_frame.pack(padx=10, pady=10, fill="x")
 
         tk.Label(self.config_frame, text="Proxy (https):").grid(row=0, column=0, sticky="w")
@@ -159,7 +159,7 @@ class PixivCrawlerGUI:
         self.cookie_entry.grid(row=2, column=1)
         self.cookie_entry.insert(0, os.getenv("PIXIV_COOKIE") or "")
 
-        self.save_button = tk.Button(self.config_frame, text="保存配置", command=self.update_config)
+        self.save_button = tk.Button(self.config_frame, text="保存する", command=self.update_config)
         self.save_button.grid(row=3, column=0, columnspan=2, pady=5)
 
         self.update_fields()
@@ -193,7 +193,7 @@ class PixivCrawlerGUI:
         user_config.user_id = uid  # 可以为空
         cookie = self.cookie_entry.get().strip()
         user_config.cookie = cookie  # 可以为空
-        messagebox.showinfo("配置", "环境配置已保存。")
+        messagebox.showinfo("環境設定", "環境設定が保存されました。")
 
     def start_download(self):
         """
@@ -215,32 +215,40 @@ class PixivCrawlerGUI:
             elif mode == "user":
                 artist_id = self.user_entry.get().strip()
                 if not artist_id:
-                    messagebox.showerror("错误", "请输入 Artist ID")
+                    messagebox.showerror("エラー", "Artist IDを入力してください")
                     return
                 downloadUser(artist_id)
             elif mode == "keyword":
                 keyword = self.keyword_entry.get().strip()
                 if not keyword:
-                    messagebox.showerror("错误", "请输入搜索关键字")
+                    messagebox.showerror("エラー", "検索キーワードを入力してください")
                     return
                 downloadKeyword(keyword)
             elif mode == "recommends":
                 tags = self.tags_entry.get().strip()
                 if not tags:
-                    messagebox.showerror("错误", "请输入推荐标签")
+                    messagebox.showerror("エラー", "おすすめタグを入力してください")
                     return
                 recommends_tags = [tag.strip() for tag in tags.split(",") if tag.strip()]
                 try:
                     max_pages = int(self.max_pages_entry.get().strip())
                 except ValueError:
-                    messagebox.showerror("错误", "最大页数必须为整数")
+                    messagebox.showerror("エラー", "最大ページ数は整数でなければなりません")
                     return
                 downloadRanking(recommends_tags=recommends_tags, max_pages=max_pages)
-            messagebox.showinfo("完成", "下载任务已完成")
+            messagebox.showinfo("完了", "ダウンロードタスクが完了しました")
         except Exception as e:
-            messagebox.showerror("错误", str(e))
+            messagebox.showerror("エラー", str(e))
 
 if __name__ == "__main__":
+    # for windows 
+    # 这个错误通常出现在 Windows 下使用 PyInstaller 打包 GUI 应用时。如果你使用了 --windowed（或 --noconsole）参数打包，那么标准输出（sys.stdout）和错误输出（sys.stderr）就会被设为 None，而有些库或代码仍试图写入输出流，就会出现 “None Object has no attribute write” 的错误。
+    import sys
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, 'w')
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, 'w')
+
     root = tk.Tk()
     gui = PixivCrawlerGUI(root)
     root.mainloop()

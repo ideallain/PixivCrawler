@@ -40,18 +40,18 @@ class Downloader:
         download_traffic = 0.0
         printInfo("===== Downloader start =====")
 
-        with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
-            with tqdm.trange(len(self.url_group), desc="Downloading") as pbar:
-                image_size_futures = [executor.submit(downloadImage, url) for url in self.url_group]
-                for future in futures.as_completed(image_size_futures):
-                    download_traffic += future.result()
-                    pbar.set_description(f"Downloading {download_traffic:.2f} MB")
-                    pbar.update()
+        # with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
+        #     with tqdm.trange(len(self.url_group), desc="Downloading") as pbar:
+        #         image_size_futures = [executor.submit(downloadImage, url) for url in self.url_group]
+        #         for future in futures.as_completed(image_size_futures):
+        #             download_traffic += future.result()
+        #             pbar.set_description(f"Downloading {download_traffic:.2f} MB")
+        #             pbar.update()
 
-                    if download_traffic > self.capacity:
-                        executor.shutdown(wait=False, cancel_futures=True)
-                        assertWarn(False, "Download capacity reached!")
-                        break
+        #             if download_traffic > self.capacity:
+        #                 executor.shutdown(wait=False, cancel_futures=True)
+        #                 assertWarn(False, "Download capacity reached!")
+        #                 break
 
         printInfo("===== Downloading complete =====")
         return download_traffic
