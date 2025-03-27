@@ -149,3 +149,150 @@ def selectKeyword(response: Response) -> Set[str]:
     for artwork in response.json()["body"]["illustManga"]["data"]:
         id_group.add(artwork["id"])
     return id_group
+
+# def selectRecommends(response: Response) -> tuple:
+#     """
+#     Extract novel_ids and series_ids from a tag recommendation page
+#     Sample URL: https://www.pixiv.net/tags/{tag}/novels?gs=1&p={page}
+    
+#     Returns:
+#         tuple: (novel_ids, series_ids, has_next_page)
+#     """
+#     novel_ids = set()
+#     series_ids = set()
+    
+#     soup = BeautifulSoup(response.text, 'html.parser')
+#     print(response.text)
+    
+#     # Find all novel elements 
+#     novel_elements = soup.select('[data-gtm-novel-id]')
+    
+#     for element in novel_elements:
+#         # Extract novel ID
+#         novel_id = element.get('data-gtm-novel-id')
+#         if novel_id:
+#             novel_ids.add(novel_id)
+            
+#         # Extract series ID if present
+#         series_id = element.get('data-gtm-series-id')
+#         if series_id and series_id != "0":  # Skip 0 which indicates no series
+#             series_ids.add(series_id)
+    
+#     # Check if there's a next page
+#     next_button = soup.select_one('a[rel="next"]')
+#     has_next_page = next_button is not None
+    
+#     printInfo(f"Found {len(novel_ids)} novel IDs and {len(series_ids)} series IDs")
+#     return novel_ids, series_ids, has_next_page
+# def selectRecommends(response: Response) -> tuple:
+#     """
+#     Extract novel_ids and series_ids from a tag recommendation page JSON response
+#     Sample URL: https://www.pixiv.net/tags/{tag}/novels?gs=1&p={page}
+    
+#     Returns:
+#         tuple: (novel_ids, series_ids, has_next_page)
+#     """
+#     novel_ids = set()
+#     series_ids = set()
+    
+#     try:
+#         # Parse the JSON response
+#         data = response.json()
+        
+#         # Check if the response structure is as expected
+#         if "error" in data and not data["error"] and "body" in data and "novel" in data["body"] and "data" in data["body"]["novel"]:
+#             novels_data = data["body"]["novel"]["data"]
+            
+#             # Extract novel IDs
+#             for novel in novels_data:
+#                 if "id" in novel:
+#                     novel_ids.add(novel["id"])
+                
+#                 # Some novels might be part of a series, extract series IDs if available
+#                 # Note: we would need to check the actual JSON structure to locate series IDs
+#                 # For now, assuming it might be in a field like "seriesId" or "series_id"
+#                 if "seriesId" in novel and novel["seriesId"] and novel["seriesId"] != "0":
+#                     series_ids.add(novel["seriesId"])
+#                 elif "series_id" in novel and novel["series_id"] and novel["series_id"] != "0":
+#                     series_ids.add(novel["series_id"])
+            
+#             # Check for pagination - based on the total number of novels vs current page size
+#             has_next_page = False
+#             if "total" in data["body"]["novel"] and len(novels_data) > 0:
+#                 total_novels = data["body"]["novel"]["total"]
+#                 has_next_page = total_novels > len(novels_data)
+            
+#             printInfo(f"Found {len(novel_ids)} novel IDs and {len(series_ids)} series IDs")
+#             return novel_ids, series_ids, has_next_page
+    
+#     except Exception as e:
+#         printInfo(f"Error processing recommendations JSON: {e}")
+    
+#     # Return empty sets if processing failed
+#     return set(), set(), False
+# def selectRecommends(response: Response) -> tuple:
+#     """
+#     Collect all novel_ids from tag recommendation page (JSON response)
+#     Sample URL: https://www.pixiv.net/ajax/search/novels/{tag}?word={tag}&order=date_d&...
+    
+#     Returns:
+#         tuple: (novel_ids, series_ids, has_next_page)
+#     """
+#     novel_ids = set()
+#     series_ids = set()
+#     has_next_page = False
+    
+#     try:
+#         data = response.json()
+        
+#         # 检查响应结构并提取数据
+#         if not data.get("error", True) and "body" in data and "novel" in data["body"] and "data" in data["body"]["novel"]:
+#             novels_data = data["body"]["novel"]["data"]
+            
+#             # 提取小说ID
+#             for novel in novels_data:
+#                 if "id" in novel:
+#                     novel_ids.add(novel["id"])
+            
+#             # 检查分页信息
+#             if "novel" in data["body"] and "total" in data["body"]["novel"] and "lastPage" in data["body"]["novel"]:
+#                 total = data["body"]["novel"]["total"]
+#                 last_page = data["body"]["novel"]["lastPage"]
+                
+#                 # 从URL获取当前页码
+#                 current_page = 1
+#                 page_match = re.search(r"p=(\d+)", response.url)
+#                 if page_match:
+#                     current_page = int(page_match.group(1))
+                
+#                 # 检查是否还有下一页
+#                 has_next_page = current_page < last_page
+            
+#             printInfo(f"Found {len(novel_ids)} novel IDs from page, has_next_page: {has_next_page}")
+    
+#     except Exception as e:
+#         printInfo(f"Error processing recommendations JSON: {e}")
+    
+#     return novel_ids, series_ids, has_next_page
+
+def selectRecommends(response: Response):
+    """
+    Extract novel data from tag recommendation page JSON response
+    Sample URL: https://www.pixiv.net/ajax/search/novels/{tag}?word={tag}&order=date_d&mode=all&p={page}&...
+    
+    Returns:
+        The body part of the JSON data, or None if there was an error
+    """
+    try:
+        data = response.json()
+        
+        # 检查响应结构
+        if not data.get("error", True) and "body" in data:
+            return data["body"]
+        else:
+            printInfo(f"Error in API response: {data.get('message', 'Unknown error')}")
+    
+    except Exception as e:
+        printInfo(f"Error processing recommendations JSON: {e}")
+    
+    return None

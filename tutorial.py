@@ -15,7 +15,7 @@ from pixiv_utils.pixiv_crawler import (
 )
 
 
-def downloadRanking():
+def downloadRanking(recommends_tags=None, max_pages=5):
     """
     Download artworks from rankings
 
@@ -28,16 +28,20 @@ def downloadRanking():
     # user_config.cookie = ""
     download_config.with_tag = False
     download_config.num_threads = 12
-    ranking_config.start_date = datetime.date(2025, 2, 6)
-    ranking_config.range = 1
-    ranking_config.mode = "weekly"
-    ranking_config.content_mode = "novel"
-    ranking_config.num_artwork = 50
+
+    if recommends_tags:
+        print("running in recommend_tags mode")
+    else:
+        ranking_config.start_date = datetime.date(2024, 2, 6)
+        ranking_config.range = 360
+        ranking_config.mode = "weekly"
+        ranking_config.content_mode = "novel"
+        ranking_config.num_artwork = 50
 
     displayAllConfig()
     checkDir(download_config.store_path)
 
-    app = RankingCrawler(capacity=200)
+    app = RankingCrawler(capacity=200,recommends_tags=recommends_tags, max_pages=max_pages)
     app.run()
 
 
@@ -106,7 +110,7 @@ def downloadKeyword():
     checkDir(download_config.store_path)
 
     app = KeywordCrawler(
-        keyword="(Lucy OR 边缘行者) AND (5000users OR 10000users)",
+        keyword="(鍾タル 体調不良 SS) AND (5000users OR 10000users)",
         order=False,
         mode=["safe", "r18", "all"][-1],
         n_images=20,
@@ -134,9 +138,35 @@ def loadEnv():
 
 
 if __name__ == "__main__":
+    import argparse
+    
     loadEnv()
-
-    downloadRanking()
-    # downloadBookmark()
-    # downloadUser()
-    # downloadKeyword()
+    
+    parser = argparse.ArgumentParser(description="Pixiv Crawler")
+    parser.add_argument("--ranking", action="store_true", help="Download from rankings")
+    parser.add_argument("--bookmark", action="store_true", help="Download from bookmarks")
+    parser.add_argument("--user", type=str, help="Artist ID to download from")
+    parser.add_argument("--keyword", type=str, help="Search keyword to download from")
+    parser.add_argument("--recommends", nargs="+", help="Tags for recommendations to crawl")
+    parser.add_argument("--max-pages",type=int,default=5,help="Maximum number of pages matched tag to crawl")
+    
+    args = parser.parse_args()
+    
+    if args.ranking:
+        downloadRanking()
+    elif args.bookmark:
+        downloadBookmark()
+    elif args.user:
+        # Update UserCrawler to use the provided ID
+        app = UserCrawler(artist_id=args.user, capacity=200)
+        app.run()
+    elif args.keyword:
+        # Update KeywordCrawler to use the provided keyword
+        app = KeywordCrawler(keyword=args.keyword, order=False, mode="all", n_images=20, capacity=200)
+        app.run()
+    elif args.recommends:
+        # Use the modified RankingCrawler with recommends mode
+        downloadRanking(recommends_tags=args.recommends, max_pages=args.max_pages)
+    else:
+        # Default behavior if no options provided
+        downloadRanking()
