@@ -33,8 +33,8 @@ def downloadRanking(recommends_tags=None, max_pages=5):
         print("running in recommend_tags mode")
     else:
         ranking_config.start_date = datetime.date(2024, 2, 6)
-        ranking_config.range = 360
-        ranking_config.mode = "weekly"
+        ranking_config.range = 30
+        ranking_config.mode = "daily"
         ranking_config.content_mode = "novel"
         ranking_config.num_artwork = 50
 
