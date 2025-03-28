@@ -32,7 +32,8 @@ def collect(
                 url, headers=headers, proxies=network_config.proxy, timeout=download_config.timeout
             )
 
-            printInfo(f"Collecting {url} {response.status_code}")
+            if debug_config.verbose:
+                printInfo(f"Collecting {url} {response.status_code}")
             if response.status_code == requests.status_codes.codes.ok:
                 id_group = selector(response)
                 if debug_config.verbose:

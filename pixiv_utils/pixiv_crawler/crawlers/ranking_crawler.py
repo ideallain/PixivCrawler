@@ -164,7 +164,7 @@ def fetchWorkDataAndSendToKafka(work_id: str, work_type: str = "novel", topic: s
         # Serialize and send to Kafka
         json_data = json.dumps(message_data, ensure_ascii=False).encode('utf-8')
         producer.send(topic, json_data)
-        print(json_data)
+        # print(json_data)
         
         # Ensure message is sent
         producer.flush()
@@ -674,7 +674,7 @@ class RankingCrawler:
                     if image_ids is not None:
                         # Add IDs to total set
                         all_image_ids.update(image_ids)
-                        printInfo(f"{all_image_ids}")
+                        # printInfo(f"{all_image_ids}")
                     pbar.update()
 
         # Save all IDs to JSON file
@@ -691,7 +691,7 @@ class RankingCrawler:
             os.makedirs(output_dir, exist_ok=True)
             with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
                 future_list3 = [
-                    executor.submit(fetchNovelAndSaveToJson, novel_id, output_dir)
+                    executor.submit(fetchNovelAndSaveToJson, novel_id, output_dir, self.send_to_kafka, self.kafka_topic)
                     for novel_id in all_image_ids
                 ]
                 with tqdm.tqdm(total=len(all_image_ids), desc="Fetching novel JSON") as pbar:
@@ -719,70 +719,3 @@ class RankingCrawler:
         return self.downloader.download()
 
 
-
-# if __name__ == "__main__":
-#     import argparse
-    
-#     parser = argparse.ArgumentParser(description="Pixiv Crawler with Kafka Support")
-#     parser.add_argument("--ids-file", help="Read work IDs from specified JSON file")
-#     parser.add_argument("--output-dir", default="novels_json", help="Output directory, default: novels_json")
-#     parser.add_argument("--threads", type=int, help="Thread count, default: use configured count")
-#     parser.add_argument("--ranking", action="store_true", help="Fetch works from ranking")
-#     parser.add_argument("--work-type", default="novel", choices=["novel", "illust"], 
-#                         help="Work type: novel or illust, default: novel")
-#     parser.add_argument("--kafka", action="store_true", help="Send data to Kafka")
-#     parser.add_argument("--topic", default="pixiv_works", help="Kafka topic name, default: pixiv_works")
-#     parser.add_argument("--work-id", help="Single work ID to fetch and process")
-    
-#     args = parser.parse_args()
-    
-#     # Process single work ID
-#     if args.work_id:
-#         if args.kafka:
-#             fetchWorkDataAndSendToKafka(args.work_id, args.work_type, args.topic)
-#         else:
-#             if args.work_type == "novel":
-#                 fetchNovelAndSaveToJson(args.work_id, args.output_dir)
-#             else:
-#                 printInfo(f"Saving single illustration type not supported: {args.work_id}")
-    
-#     # Process IDs from file
-#     elif args.ids_file:
-#         if args.kafka:
-#             processWorkIdsAndSendToKafka(args.ids_file, args.work_type, args.topic, args.threads)
-#         else:
-#             if args.work_type == "novel":
-#                 processNovelIdsFromFile(args.ids_file, args.output_dir, args.threads)
-#             else:
-#                 printInfo(f"Batch saving illustration type from file not supported")
-    
-#     # Fetch from ranking
-#     elif args.ranking:
-#         crawler = RankingCrawler()
-#         ids = crawler.run()
-        
-#         # If sending to Kafka
-#         if args.kafka and ids:
-#             # Ensure ids is list or set
-#             ids_list = list(ids) if isinstance(ids, set) else ids
-            
-#             # Save ids to temp file
-#             temp_file = f"temp_{args.work_type}_ids.json"
-#             with open(temp_file, "w", encoding="utf-8") as f:
-#                 json.dump(ids_list, f)
-            
-#             # Process and send to Kafka
-#             processWorkIdsAndSendToKafka(temp_file, args.work_type, args.topic, args.threads)
-    
-#     else:
-#         print("""
-# Please specify one of the following parameters:
-#   --work-id ID      Process single work
-#   --ids-file FILE   Read ID list for batch processing
-#   --ranking         Fetch works from ranking
-
-# Optional parameters:
-#   --kafka           Send data to Kafka
-#   --topic TOPIC     Specify Kafka topic
-#   --work-type TYPE  Specify work type (novel or illust)
-#         """)
