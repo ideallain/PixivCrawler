@@ -244,22 +244,239 @@ def fetchNovelAndGenerateEpub(novel_id: str):
     except Exception as e:
         printInfo(f"Error fetching novel {novel_id}: {e}")
 
-def fetchNovelAndSaveToJson(novel_id: str, output_dir: str = "novels_json"):
+# def fetchNovelAndSaveToJson(novel_id: str, output_dir: str = "novels_json"):
+#     """
+#     Fetch novel by ID and save raw preload data to JSON file
+#     """
+#     # Ensure output directory exists
+#     os.makedirs(output_dir, exist_ok=True)
+    
+#     # Construct output file path
+#     output_file = os.path.join(output_dir, f"novel_{novel_id}.json")
+    
+#     # Skip if file already exists
+#     if os.path.exists(output_file):
+#         printInfo(f"[INFO] JSON file for novel {novel_id} already exists, skipping")
+#         return
+    
+#     # Pixiv novel reading URL
+#     url = f"https://www.pixiv.net/novel/show.php?id={novel_id}"
+#     headers = {
+#         "Referer": "https://www.pixiv.net/novel/",
+#         "x-requested-with": "XMLHttpRequest",
+#         "COOKIE": user_config.cookie or "",
+#     }
+
+#     try:
+#         response = requests.get(url, headers=headers)
+#         response.raise_for_status()
+#     except Exception as e:
+#         printInfo(f"[WARN] Error fetching novel page ({novel_id}): {e}")
+#         return
+
+#     soup = BeautifulSoup(response.text, 'html.parser')
+#     meta_tag = soup.find('meta', attrs={'name': 'preload-data', 'id': 'meta-preload-data'})
+#     if not meta_tag:
+#         printInfo(f"[INFO] No meta-preload-data tag found for novel {novel_id}")
+#         return
+
+#     # Get content attribute (raw JSON string)
+#     json_str = meta_tag.get("content")
+#     if not json_str:
+#         printInfo(f"[INFO] meta-preload-data tag has no content or is empty for novel {novel_id}")
+#         return
+
+#     try:
+#         # Parse JSON to ensure format is correct
+#         parsed_data = json.loads(json_str)
+        
+#         # Save parsed data to file
+#         with open(output_file, "w", encoding="utf-8") as f:
+#             json.dump(parsed_data, f, indent=4, ensure_ascii=False)
+        
+#         printInfo(f"[INFO] Data for novel {novel_id} saved to {output_file}")
+#     except json.JSONDecodeError as e:
+#         printInfo(f"[ERROR] Data for novel {novel_id} is not valid JSON: {e}")
+#     except Exception as e:
+#         printInfo(f"[ERROR] Error saving data for novel {novel_id}: {e}")
+
+# def processNovelIdsFromFile(ids_file: str, output_dir: str = "novels_json", num_threads: int = None):
+#     """
+#     Process novel IDs from JSON file and save each novel's data as individual JSON file
+#     """
+#     # Ensure output directory exists
+#     os.makedirs(output_dir, exist_ok=True)
+    
+#     # Use configured thread count or specified count
+#     threads = num_threads if num_threads is not None else download_config.num_threads
+    
+#     try:
+#         # Read novel IDs list
+#         with open(ids_file, "r", encoding="utf-8") as f:
+#             novel_ids = json.load(f)
+        
+#         if not isinstance(novel_ids, list):
+#             printInfo(f"[ERROR] Content of {ids_file} is not a valid ID list")
+#             return
+        
+#         printInfo(f"[INFO] Read {len(novel_ids)} novel IDs from {ids_file}")
+        
+#         # Parallel processing
+#         printInfo(f"[INFO] Starting parallel processing of {len(novel_ids)} novels using {threads} threads...")
+        
+#         with futures.ThreadPoolExecutor(threads) as executor:
+#             with tqdm.tqdm(total=len(novel_ids), desc="Fetching novel data") as pbar:
+#                 future_list = [
+#                     executor.submit(fetchNovelAndSaveToJson, novel_id, output_dir)
+#                     for novel_id in novel_ids
+#                 ]
+                
+#                 for future in futures.as_completed(future_list):
+#                     # Update progress bar
+#                     pbar.update(1)
+        
+#         printInfo(f"[INFO] All novel data fetching complete, saved to {output_dir} directory")
+        
+#     except Exception as e:
+#         printInfo(f"[ERROR] Error processing novel ID list: {e}")
+
+
+# pixiv_novels 是 我们现在关心的 pixiv_works是历史了
+def sendNovelToKafka(novel_id: str, parsed_data: dict, topic: str = "pixiv_novels"):
     """
-    Fetch novel by ID and save raw preload data to JSON file
+    将Pixiv小说数据转换为结构化格式并发送到Kafka
+    
+    Args:
+        novel_id: 小说ID
+        parsed_data: 解析后的小说JSON数据
+        topic: Kafka主题名称
+    
+    Returns:
+        bool: 是否成功发送
     """
-    # Ensure output directory exists
+    try:
+        # 提取小说数据 - 处理不同的JSON结构可能性
+        novel_data = None
+        if "novel" in parsed_data and novel_id in parsed_data["novel"]:
+            novel_data = parsed_data["novel"][novel_id]
+        else:
+            # 尝试在嵌套结构中查找小说ID
+            for key, value in parsed_data.items():
+                if isinstance(value, dict) and "novel" in value and novel_id in value["novel"]:
+                    novel_data = value["novel"][novel_id]
+                    break
+        
+        if not novel_data:
+            printInfo(f"[ERROR] Could not find novel data for ID {novel_id} in parsed data")
+            return False
+        
+        # 提取元数据
+        title = novel_data.get("title", "")
+        author_id = novel_data.get("userId", "")
+        author_name = novel_data.get("userName", "")
+        created_at = novel_data.get("createDate", "")
+        updated_at = novel_data.get("updateDate", "")
+        description = novel_data.get("description", "")
+        content = novel_data.get("content", "")
+        text_length = novel_data.get("textLength", 0)
+        language = novel_data.get("language", "")
+        
+        # 提取标签
+        tags = []
+        if "tags" in novel_data and "tags" in novel_data["tags"]:
+            tags = novel_data["tags"]["tags"]
+        
+        # 提取评分
+        bookmark_count = novel_data.get("bookmarkCount", 0)
+        view_count = novel_data.get("viewCount", 0)
+        like_count = novel_data.get("likeCount", 0)
+        
+        # 构建Kafka消息
+        kafka_message = {
+            "id": novel_id,
+            "type": "novel",
+            "metadata": {
+                "title": title,
+                "author": {
+                    "id": author_id,
+                    "name": author_name
+                },
+                "created_at": created_at,
+                "updated_at": updated_at,
+                "tags": tags,
+                "description": description,
+                "text_length": text_length,
+                "language": language,
+                "bookmark_count": bookmark_count,
+                "rating": {
+                    "view_count": view_count,
+                    "like_count": like_count
+                }
+            },
+            "content": content,
+            "status": {
+                "llm_processed": False,
+                "llm_task_id": None,
+                "llm_tags": [],
+                "last_processed": datetime.datetime.now().isoformat()
+            },
+            "raw_data": parsed_data  # 包含完整原始数据以供参考
+        }
+        
+        # 获取Kafka生产者
+        producer = getKafkaProducer()
+        
+        # 序列化并发送到Kafka
+        json_data = json.dumps(kafka_message, ensure_ascii=False).encode('utf-8')
+        producer.send(topic, json_data)
+        
+        # 确保消息已发送
+        producer.flush()
+        
+        printInfo(f"[INFO] Novel {novel_id} data sent to Kafka topic {topic}")
+        return True
+        
+    except Exception as e:
+        printInfo(f"[ERROR] Error sending novel {novel_id} to Kafka: {e}")
+        return False
+
+def fetchNovelAndSaveToJson(novel_id: str, output_dir: str = "novels_json", send_to_kafka: bool = False, topic: str = "pixiv_novels"):
+    """
+    获取小说数据，保存为JSON并可选择发送到Kafka
+    
+    Args:
+        novel_id: 小说ID
+        output_dir: 输出目录路径
+        send_to_kafka: 是否发送到Kafka
+        topic: Kafka主题名称
+    
+    Returns:
+        bool: 是否成功获取数据
+    """
+    # 确保输出目录存在
     os.makedirs(output_dir, exist_ok=True)
     
-    # Construct output file path
+    # 构建输出文件路径
     output_file = os.path.join(output_dir, f"novel_{novel_id}.json")
     
-    # Skip if file already exists
-    if os.path.exists(output_file):
-        printInfo(f"[INFO] JSON file for novel {novel_id} already exists, skipping")
-        return
+    # 检查文件是否已存在
+    file_exists = os.path.exists(output_file)
     
-    # Pixiv novel reading URL
+    # 如果文件已存在且不需要发送到Kafka，则跳过
+    if file_exists and not send_to_kafka:
+        printInfo(f"[INFO] JSON file for novel {novel_id} already exists, skipping")
+        return True
+    
+    # 如果文件存在且需要发送到Kafka，可以使用现有数据
+    if file_exists and send_to_kafka:
+        try:
+            with open(output_file, "r", encoding="utf-8") as f:
+                parsed_data = json.load(f)
+                return sendNovelToKafka(novel_id, parsed_data, topic)
+        except Exception as e:
+            printInfo(f"[WARN] Error reading existing novel data ({novel_id}): {e}, will refetch")
+    
+    # Pixiv小说阅读URL
     url = f"https://www.pixiv.net/novel/show.php?id={novel_id}"
     headers = {
         "Referer": "https://www.pixiv.net/novel/",
@@ -272,46 +489,64 @@ def fetchNovelAndSaveToJson(novel_id: str, output_dir: str = "novels_json"):
         response.raise_for_status()
     except Exception as e:
         printInfo(f"[WARN] Error fetching novel page ({novel_id}): {e}")
-        return
+        return False
 
     soup = BeautifulSoup(response.text, 'html.parser')
     meta_tag = soup.find('meta', attrs={'name': 'preload-data', 'id': 'meta-preload-data'})
     if not meta_tag:
         printInfo(f"[INFO] No meta-preload-data tag found for novel {novel_id}")
-        return
+        return False
 
-    # Get content attribute (raw JSON string)
+    # 获取content属性（原始JSON字符串）
     json_str = meta_tag.get("content")
     if not json_str:
         printInfo(f"[INFO] meta-preload-data tag has no content or is empty for novel {novel_id}")
-        return
+        return False
 
     try:
-        # Parse JSON to ensure format is correct
+        # 解析JSON以确保格式正确
         parsed_data = json.loads(json_str)
         
-        # Save parsed data to file
+        # 保存解析后的数据到文件
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(parsed_data, f, indent=4, ensure_ascii=False)
         
         printInfo(f"[INFO] Data for novel {novel_id} saved to {output_file}")
+        
+        # 如果需要，发送到Kafka
+        if send_to_kafka:
+            return sendNovelToKafka(novel_id, parsed_data, topic)
+        
+        return True
+            
     except json.JSONDecodeError as e:
         printInfo(f"[ERROR] Data for novel {novel_id} is not valid JSON: {e}")
     except Exception as e:
         printInfo(f"[ERROR] Error saving data for novel {novel_id}: {e}")
+    
+    return False
 
-def processNovelIdsFromFile(ids_file: str, output_dir: str = "novels_json", num_threads: int = None):
+def processNovelIdsFromFile(ids_file: str, output_dir: str = "novels_json", num_threads: int = None, 
+                           send_to_kafka: bool = False, topic: str = "pixiv_novels"):
     """
-    Process novel IDs from JSON file and save each novel's data as individual JSON file
+    从JSON文件读取小说ID列表，保存每个小说的数据为独立的JSON文件
+    可选择发送到Kafka
+    
+    Args:
+        ids_file: 包含小说ID列表的JSON文件路径
+        output_dir: 输出目录路径
+        num_threads: 线程数，如果为None则使用配置值
+        send_to_kafka: 是否发送到Kafka
+        topic: Kafka主题名称
     """
-    # Ensure output directory exists
+    # 确保输出目录存在
     os.makedirs(output_dir, exist_ok=True)
     
-    # Use configured thread count or specified count
+    # 使用配置的线程数或指定的线程数
     threads = num_threads if num_threads is not None else download_config.num_threads
     
     try:
-        # Read novel IDs list
+        # 读取小说ID列表
         with open(ids_file, "r", encoding="utf-8") as f:
             novel_ids = json.load(f)
         
@@ -321,25 +556,33 @@ def processNovelIdsFromFile(ids_file: str, output_dir: str = "novels_json", num_
         
         printInfo(f"[INFO] Read {len(novel_ids)} novel IDs from {ids_file}")
         
-        # Parallel processing
-        printInfo(f"[INFO] Starting parallel processing of {len(novel_ids)} novels using {threads} threads...")
+        # 并行处理
+        action_msg = "fetching and sending to Kafka" if send_to_kafka else "fetching"
+        printInfo(f"[INFO] Starting parallel processing of {len(novel_ids)} novels ({action_msg}) using {threads} threads...")
+        
+        success_count = 0
+        fail_count = 0
         
         with futures.ThreadPoolExecutor(threads) as executor:
             with tqdm.tqdm(total=len(novel_ids), desc="Fetching novel data") as pbar:
                 future_list = [
-                    executor.submit(fetchNovelAndSaveToJson, novel_id, output_dir)
+                    executor.submit(fetchNovelAndSaveToJson, novel_id, output_dir, send_to_kafka, topic)
                     for novel_id in novel_ids
                 ]
                 
                 for future in futures.as_completed(future_list):
-                    # Update progress bar
+                    result = future.result()
+                    if result:
+                        success_count += 1
+                    else:
+                        fail_count += 1
                     pbar.update(1)
         
-        printInfo(f"[INFO] All novel data fetching complete, saved to {output_dir} directory")
+        printInfo(f"[INFO] All novel data {action_msg} complete: {success_count} successful, {fail_count} failed")
+        printInfo(f"[INFO] Data saved to {output_dir} directory")
         
     except Exception as e:
         printInfo(f"[ERROR] Error processing novel ID list: {e}")
-
 
 class RankingCrawler:
     def __init__(self, capacity: float = 1024, recommends_tags: List[str] = None, max_pages = 5):
