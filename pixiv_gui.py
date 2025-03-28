@@ -149,12 +149,12 @@ class PixivCrawlerGUI:
         self.proxy_entry.grid(row=0, column=1)
         self.proxy_entry.insert(0, os.getenv("https_proxy") or os.getenv("HTTPS_PROXY") or "")
 
-        tk.Label(self.config_frame, text="PIXIV_UID:").grid(row=1, column=0, sticky="w")
+        tk.Label(self.config_frame, text="UID:").grid(row=1, column=0, sticky="w")
         self.uid_entry = tk.Entry(self.config_frame, width=50)
         self.uid_entry.grid(row=1, column=1)
         self.uid_entry.insert(0, os.getenv("PIXIV_UID") or "")
 
-        tk.Label(self.config_frame, text="PIXIV_COOKIE:").grid(row=2, column=0, sticky="w")
+        tk.Label(self.config_frame, text="KEY:").grid(row=2, column=0, sticky="w")
         self.cookie_entry = tk.Entry(self.config_frame, width=50)
         self.cookie_entry.grid(row=2, column=1)
         self.cookie_entry.insert(0, os.getenv("PIXIV_COOKIE") or "")
