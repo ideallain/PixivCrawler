@@ -178,49 +178,6 @@ def fetchWorkDataAndSendToKafka(work_id: str, work_type: str = "novel", topic: s
     
     return False
 
-def processWorkIdsAndSendToKafka(ids_file: str, work_type: str = "novel", topic: str = "pixiv_works", num_threads: int = None):
-    """
-    Process work IDs from JSON file and send to Kafka in parallel
-    """
-    # Use configured thread count or specified count
-    threads = num_threads if num_threads is not None else download_config.num_threads
-    
-    try:
-        # Read work IDs list
-        with open(ids_file, "r", encoding="utf-8") as f:
-            work_ids = json.load(f)
-        
-        if not isinstance(work_ids, list):
-            printInfo(f"[ERROR] Content of {ids_file} is not a valid ID list")
-            return
-        
-        printInfo(f"[INFO] Read {len(work_ids)} work IDs from {ids_file}")
-        
-        # Parallel processing
-        printInfo(f"[INFO] Starting parallel processing of {len(work_ids)} works and sending to Kafka using {threads} threads...")
-        
-        success_count = 0
-        fail_count = 0
-        
-        with futures.ThreadPoolExecutor(threads) as executor:
-            with tqdm.tqdm(total=len(work_ids), desc=f"Sending {work_type} to Kafka") as pbar:
-                future_list = [
-                    executor.submit(fetchWorkDataAndSendToKafka, work_id, work_type, topic)
-                    for work_id in work_ids
-                ]
-                
-                for future in futures.as_completed(future_list):
-                    result = future.result()
-                    if result:
-                        success_count += 1
-                    else:
-                        fail_count += 1
-                    pbar.update(1)
-        
-        printInfo(f"[INFO] All work data processing complete: {success_count} successful, {fail_count} failed")
-        
-    except Exception as e:
-        printInfo(f"[ERROR] Error processing work ID list: {e}")
 
 def fetchNovelAndGenerateEpub(novel_id: str):
     """
@@ -243,104 +200,6 @@ def fetchNovelAndGenerateEpub(novel_id: str):
         metaPreloadDataToEpub(response, epub_filename)
     except Exception as e:
         printInfo(f"Error fetching novel {novel_id}: {e}")
-
-# def fetchNovelAndSaveToJson(novel_id: str, output_dir: str = "novels_json"):
-#     """
-#     Fetch novel by ID and save raw preload data to JSON file
-#     """
-#     # Ensure output directory exists
-#     os.makedirs(output_dir, exist_ok=True)
-    
-#     # Construct output file path
-#     output_file = os.path.join(output_dir, f"novel_{novel_id}.json")
-    
-#     # Skip if file already exists
-#     if os.path.exists(output_file):
-#         printInfo(f"[INFO] JSON file for novel {novel_id} already exists, skipping")
-#         return
-    
-#     # Pixiv novel reading URL
-#     url = f"https://www.pixiv.net/novel/show.php?id={novel_id}"
-#     headers = {
-#         "Referer": "https://www.pixiv.net/novel/",
-#         "x-requested-with": "XMLHttpRequest",
-#         "COOKIE": user_config.cookie or "",
-#     }
-
-#     try:
-#         response = requests.get(url, headers=headers)
-#         response.raise_for_status()
-#     except Exception as e:
-#         printInfo(f"[WARN] Error fetching novel page ({novel_id}): {e}")
-#         return
-
-#     soup = BeautifulSoup(response.text, 'html.parser')
-#     meta_tag = soup.find('meta', attrs={'name': 'preload-data', 'id': 'meta-preload-data'})
-#     if not meta_tag:
-#         printInfo(f"[INFO] No meta-preload-data tag found for novel {novel_id}")
-#         return
-
-#     # Get content attribute (raw JSON string)
-#     json_str = meta_tag.get("content")
-#     if not json_str:
-#         printInfo(f"[INFO] meta-preload-data tag has no content or is empty for novel {novel_id}")
-#         return
-
-#     try:
-#         # Parse JSON to ensure format is correct
-#         parsed_data = json.loads(json_str)
-        
-#         # Save parsed data to file
-#         with open(output_file, "w", encoding="utf-8") as f:
-#             json.dump(parsed_data, f, indent=4, ensure_ascii=False)
-        
-#         printInfo(f"[INFO] Data for novel {novel_id} saved to {output_file}")
-#     except json.JSONDecodeError as e:
-#         printInfo(f"[ERROR] Data for novel {novel_id} is not valid JSON: {e}")
-#     except Exception as e:
-#         printInfo(f"[ERROR] Error saving data for novel {novel_id}: {e}")
-
-# def processNovelIdsFromFile(ids_file: str, output_dir: str = "novels_json", num_threads: int = None):
-#     """
-#     Process novel IDs from JSON file and save each novel's data as individual JSON file
-#     """
-#     # Ensure output directory exists
-#     os.makedirs(output_dir, exist_ok=True)
-    
-#     # Use configured thread count or specified count
-#     threads = num_threads if num_threads is not None else download_config.num_threads
-    
-#     try:
-#         # Read novel IDs list
-#         with open(ids_file, "r", encoding="utf-8") as f:
-#             novel_ids = json.load(f)
-        
-#         if not isinstance(novel_ids, list):
-#             printInfo(f"[ERROR] Content of {ids_file} is not a valid ID list")
-#             return
-        
-#         printInfo(f"[INFO] Read {len(novel_ids)} novel IDs from {ids_file}")
-        
-#         # Parallel processing
-#         printInfo(f"[INFO] Starting parallel processing of {len(novel_ids)} novels using {threads} threads...")
-        
-#         with futures.ThreadPoolExecutor(threads) as executor:
-#             with tqdm.tqdm(total=len(novel_ids), desc="Fetching novel data") as pbar:
-#                 future_list = [
-#                     executor.submit(fetchNovelAndSaveToJson, novel_id, output_dir)
-#                     for novel_id in novel_ids
-#                 ]
-                
-#                 for future in futures.as_completed(future_list):
-#                     # Update progress bar
-#                     pbar.update(1)
-        
-#         printInfo(f"[INFO] All novel data fetching complete, saved to {output_dir} directory")
-        
-#     except Exception as e:
-#         printInfo(f"[ERROR] Error processing novel ID list: {e}")
-
-
 # pixiv_novels 是 我们现在关心的 pixiv_works是历史了
 def sendNovelToKafka(novel_id: str, parsed_data: dict, topic: str = "pixiv_novels"):
     """
@@ -584,8 +443,10 @@ def processNovelIdsFromFile(ids_file: str, output_dir: str = "novels_json", num_
     except Exception as e:
         printInfo(f"[ERROR] Error processing novel ID list: {e}")
 
+    
 class RankingCrawler:
-    def __init__(self, capacity: float = 1024, recommends_tags: List[str] = None, max_pages = 5):
+    def __init__(self, capacity: float = 1024, recommends_tags: List[str] = None, max_pages = 5, 
+                send_to_kafka: bool = False, kafka_topic: str = "pixiv_novels"):
         """
         Initialize RankingCrawler to download artworks from ranking or recommendations
         
@@ -593,10 +454,16 @@ class RankingCrawler:
             capacity (float): Flow capacity in MB, default 1024
             recommends_tags (List[str]): Tags for recommendations mode
             max_pages (int): Maximum pages to fetch per tag, default 5
+            send_to_kafka (bool): Whether to send data to Kafka
+            kafka_topic (str): Kafka topic name
         """
         self.date = ranking_config.start_date
         self.range = ranking_config.range
         self.mode = ranking_config.mode
+        
+        # Kafka settings
+        self.send_to_kafka = send_to_kafka
+        self.kafka_topic = kafka_topic
 
         self.is_recommends_mode = recommends_tags is not None
         # Config only for recommends mode
@@ -853,69 +720,69 @@ class RankingCrawler:
 
 
 
-if __name__ == "__main__":
-    import argparse
+# if __name__ == "__main__":
+#     import argparse
     
-    parser = argparse.ArgumentParser(description="Pixiv Crawler with Kafka Support")
-    parser.add_argument("--ids-file", help="Read work IDs from specified JSON file")
-    parser.add_argument("--output-dir", default="novels_json", help="Output directory, default: novels_json")
-    parser.add_argument("--threads", type=int, help="Thread count, default: use configured count")
-    parser.add_argument("--ranking", action="store_true", help="Fetch works from ranking")
-    parser.add_argument("--work-type", default="novel", choices=["novel", "illust"], 
-                        help="Work type: novel or illust, default: novel")
-    parser.add_argument("--kafka", action="store_true", help="Send data to Kafka")
-    parser.add_argument("--topic", default="pixiv_works", help="Kafka topic name, default: pixiv_works")
-    parser.add_argument("--work-id", help="Single work ID to fetch and process")
+#     parser = argparse.ArgumentParser(description="Pixiv Crawler with Kafka Support")
+#     parser.add_argument("--ids-file", help="Read work IDs from specified JSON file")
+#     parser.add_argument("--output-dir", default="novels_json", help="Output directory, default: novels_json")
+#     parser.add_argument("--threads", type=int, help="Thread count, default: use configured count")
+#     parser.add_argument("--ranking", action="store_true", help="Fetch works from ranking")
+#     parser.add_argument("--work-type", default="novel", choices=["novel", "illust"], 
+#                         help="Work type: novel or illust, default: novel")
+#     parser.add_argument("--kafka", action="store_true", help="Send data to Kafka")
+#     parser.add_argument("--topic", default="pixiv_works", help="Kafka topic name, default: pixiv_works")
+#     parser.add_argument("--work-id", help="Single work ID to fetch and process")
     
-    args = parser.parse_args()
+#     args = parser.parse_args()
     
-    # Process single work ID
-    if args.work_id:
-        if args.kafka:
-            fetchWorkDataAndSendToKafka(args.work_id, args.work_type, args.topic)
-        else:
-            if args.work_type == "novel":
-                fetchNovelAndSaveToJson(args.work_id, args.output_dir)
-            else:
-                printInfo(f"Saving single illustration type not supported: {args.work_id}")
+#     # Process single work ID
+#     if args.work_id:
+#         if args.kafka:
+#             fetchWorkDataAndSendToKafka(args.work_id, args.work_type, args.topic)
+#         else:
+#             if args.work_type == "novel":
+#                 fetchNovelAndSaveToJson(args.work_id, args.output_dir)
+#             else:
+#                 printInfo(f"Saving single illustration type not supported: {args.work_id}")
     
-    # Process IDs from file
-    elif args.ids_file:
-        if args.kafka:
-            processWorkIdsAndSendToKafka(args.ids_file, args.work_type, args.topic, args.threads)
-        else:
-            if args.work_type == "novel":
-                processNovelIdsFromFile(args.ids_file, args.output_dir, args.threads)
-            else:
-                printInfo(f"Batch saving illustration type from file not supported")
+#     # Process IDs from file
+#     elif args.ids_file:
+#         if args.kafka:
+#             processWorkIdsAndSendToKafka(args.ids_file, args.work_type, args.topic, args.threads)
+#         else:
+#             if args.work_type == "novel":
+#                 processNovelIdsFromFile(args.ids_file, args.output_dir, args.threads)
+#             else:
+#                 printInfo(f"Batch saving illustration type from file not supported")
     
-    # Fetch from ranking
-    elif args.ranking:
-        crawler = RankingCrawler()
-        ids = crawler.run()
+#     # Fetch from ranking
+#     elif args.ranking:
+#         crawler = RankingCrawler()
+#         ids = crawler.run()
         
-        # If sending to Kafka
-        if args.kafka and ids:
-            # Ensure ids is list or set
-            ids_list = list(ids) if isinstance(ids, set) else ids
+#         # If sending to Kafka
+#         if args.kafka and ids:
+#             # Ensure ids is list or set
+#             ids_list = list(ids) if isinstance(ids, set) else ids
             
-            # Save ids to temp file
-            temp_file = f"temp_{args.work_type}_ids.json"
-            with open(temp_file, "w", encoding="utf-8") as f:
-                json.dump(ids_list, f)
+#             # Save ids to temp file
+#             temp_file = f"temp_{args.work_type}_ids.json"
+#             with open(temp_file, "w", encoding="utf-8") as f:
+#                 json.dump(ids_list, f)
             
-            # Process and send to Kafka
-            processWorkIdsAndSendToKafka(temp_file, args.work_type, args.topic, args.threads)
+#             # Process and send to Kafka
+#             processWorkIdsAndSendToKafka(temp_file, args.work_type, args.topic, args.threads)
     
-    else:
-        print("""
-Please specify one of the following parameters:
-  --work-id ID      Process single work
-  --ids-file FILE   Read ID list for batch processing
-  --ranking         Fetch works from ranking
+#     else:
+#         print("""
+# Please specify one of the following parameters:
+#   --work-id ID      Process single work
+#   --ids-file FILE   Read ID list for batch processing
+#   --ranking         Fetch works from ranking
 
-Optional parameters:
-  --kafka           Send data to Kafka
-  --topic TOPIC     Specify Kafka topic
-  --work-type TYPE  Specify work type (novel or illust)
-        """)
+# Optional parameters:
+#   --kafka           Send data to Kafka
+#   --topic TOPIC     Specify Kafka topic
+#   --work-type TYPE  Specify work type (novel or illust)
+#         """)

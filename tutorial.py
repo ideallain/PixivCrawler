@@ -15,14 +15,15 @@ from pixiv_utils.pixiv_crawler import (
 )
 
 
-def downloadRanking(recommends_tags=None, max_pages=5):
+def downloadRanking(recommends_tags=None, max_pages=5, send_to_kafka=False, kafka_topic="pixiv_novels"):
     """
-    Download artworks from rankings
-
-    NOTE: Require cookie for R18 images!
+    Download artworks from rankings and optionally send to Kafka
 
     Args:
-        capacity (int): flow capacity, default is 1024MB
+        recommends_tags (list): Tags for recommendations mode
+        max_pages (int): Maximum pages to fetch per tag, default is 5
+        send_to_kafka (bool): Whether to send data to Kafka, default is False
+        kafka_topic (str): Kafka topic name, default is "pixiv_novels"
     """
     # user_config.user_id = ""
     # user_config.cookie = ""
@@ -41,7 +42,8 @@ def downloadRanking(recommends_tags=None, max_pages=5):
     displayAllConfig()
     checkDir(download_config.store_path)
 
-    app = RankingCrawler(capacity=200,recommends_tags=recommends_tags, max_pages=max_pages)
+    app = RankingCrawler(capacity=200, recommends_tags=recommends_tags, max_pages=max_pages, 
+                        send_to_kafka=send_to_kafka, kafka_topic=kafka_topic)
     app.run()
 
 
@@ -148,12 +150,14 @@ if __name__ == "__main__":
     parser.add_argument("--user", type=str, help="Artist ID to download from")
     parser.add_argument("--keyword", type=str, help="Search keyword to download from")
     parser.add_argument("--recommends", nargs="+", help="Tags for recommendations to crawl")
-    parser.add_argument("--max-pages",type=int,default=5,help="Maximum number of pages matched tag to crawl")
+    parser.add_argument("--max-pages", type=int, default=5, help="Maximum number of pages matched tag to crawl")
+    parser.add_argument("--kafka", action="store_true", help="Send data to Kafka")
+    parser.add_argument("--topic", default="pixiv_novels", help="Kafka topic name, default: pixiv_novels")
     
     args = parser.parse_args()
     
     if args.ranking:
-        downloadRanking()
+        downloadRanking(send_to_kafka=args.kafka, kafka_topic=args.topic)
     elif args.bookmark:
         downloadBookmark()
     elif args.user:
@@ -166,7 +170,8 @@ if __name__ == "__main__":
         app.run()
     elif args.recommends:
         # Use the modified RankingCrawler with recommends mode
-        downloadRanking(recommends_tags=args.recommends, max_pages=args.max_pages)
+        downloadRanking(recommends_tags=args.recommends, max_pages=args.max_pages, 
+                       send_to_kafka=args.kafka, kafka_topic=args.topic)
     else:
         # Default behavior if no options provided
-        downloadRanking()
+        downloadRanking(send_to_kafka=args.kafka, kafka_topic=args.topic)
