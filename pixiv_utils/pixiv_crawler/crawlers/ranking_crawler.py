@@ -106,8 +106,8 @@ def metaPreloadDataToEpub(response: Response, epub_filename: str) -> None:
     epub.write_epub(epub_filename, book, {})
     print(f"[INFO] EPUB file generated: {epub_filename}")
 
-
-def fetchWorkDataAndSendToKafka(work_id: str, work_type: str = "novel", topic: str = "pixiv_works"):
+## for test
+def playGetNovelFromIdAndSendToKafka(work_id: str, work_type: str = "novel", topic: str = "pixiv_works"):
     """
     Fetch artwork data by ID and send to Kafka
     """
@@ -516,7 +516,7 @@ class RankingCrawler:
         for tag in self.recommends_tags:
             encoded_tag = requests.utils.quote(tag)
             for page in range(1, self.max_pages + 1):
-                url = f"https://www.pixiv.net/ajax/search/novels/{encoded_tag}?word={encoded_tag}&order=date_d&mode=all&p={page}&csw=0&s_mode=s_tag&gs=1&lang=zh_tw&version=e11a103b148c138660cbd4085334f4e6da87a9f1"
+                url = f"https://www.pixiv.net/ajax/search/novels/{encoded_tag}?word={encoded_tag}&order=date_d&mode=all&p={page}&csw=0&s_mode=s_tag&lang=zh_tw&version=e11a103b148c138660cbd4085334f4e6da87a9f1"
                 urls.add(url)
                 
                 # Add headers for each URL
@@ -550,10 +550,23 @@ class RankingCrawler:
                         for novel in novels_data:
                             if "novelId" in novel:
                                 all_novel_ids.add(novel["novelId"])
+                            elif "id" in novel:
+                                all_novel_ids.add(novel["id"])
                             elif "latestEpisodeId" in novel:
                                 all_novel_ids.add(novel["latestEpisodeId"])
                     
                     pbar.update(1)
+
+                if self.send_to_kafka:
+                    output_dir = os.path.join(download_config.store_path, "novels_recommend_json") 
+                    with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
+                        future_list2 = [
+                            executor.submit(fetchNovelAndSaveToJson, novel_id, output_dir, self.send_to_kafka, self.kafka_topic)
+                            for novel_id in all_novel_ids
+                        ]
+                        with tqdm.tqdm(total=len(all_novel_ids), desc="Fetching novel JSON") as pbar:
+                            for _ in futures.as_completed(future_list2):
+                                pbar.update(1)
         
         # Save complete data to JSON file
         with open("novels_from_recommends.json", "w", encoding="utf-8") as f:
