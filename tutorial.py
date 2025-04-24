@@ -131,12 +131,12 @@ def loadEnv():
         network_config.proxy["https"] = proxy
 
     # Use system user_id and cookie
-    cookie = os.getenv("PIXIV_COOKIE")
-    uid = os.getenv("PIXIV_UID")
-    if cookie is not None:
-        user_config.cookie = cookie
-    if uid is not None:
-        user_config.user_id = uid
+    # cookie = os.getenv("PIXIV_COOKIE")
+    # uid = os.getenv("PIXIV_UID")
+    # if cookie is not None:
+    user_config.cookie = "114689517_Qc4XMahDbTxbHsGkgZGhAXvLuav4Sn7Z"
+    # if uid is not None:
+    user_config.user_id = "114689517"
 
 
 if __name__ == "__main__":

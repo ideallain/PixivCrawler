@@ -501,86 +501,50 @@ class RankingCrawler:
         else: 
             self._collect_ranking(artworks_per_json)
 
-    def _collect_recommends(self):
-        """Collect novel data from recommendation pages for specified tags"""
-        printInfo(f"===== Start collecting recommendations for {len(self.recommends_tags)} tags =====")
+    def collect_recommends(self):
+        """Collect novel data from IDs in a text file and process them"""
+        printInfo("===== Start processing novels from ID file =====")
         
-        # Store all novel data
-        all_novel_data = []
+        # Read novel IDs from text file
         all_novel_ids = set()
+        try:
+            with open("ids.txt", "r", encoding="utf-8") as f:
+                for line in f:
+                    novel_id = line.strip()
+                    if novel_id:  # Skip empty lines
+                        all_novel_ids.add(novel_id)
+        except FileNotFoundError:
+            printInfo("Error: ids.txt file not found!")
+            return
+        except Exception as e:
+            printInfo(f"Error reading IDs file: {e}")
+            return
         
-        # Build all request URLs
-        urls = set()
-        additional_headers = []
+        printInfo(f"Loaded {len(all_novel_ids)} novel IDs from ids.txt")
         
-        for tag in self.recommends_tags:
-            encoded_tag = requests.utils.quote(tag)
-            for page in range(1, self.max_pages + 1):
-                url = f"https://www.pixiv.net/ajax/search/novels/{encoded_tag}?word={encoded_tag}&order=date_d&mode=all&p={page}&csw=0&s_mode=s_tag&lang=zh_tw&version=e11a103b148c138660cbd4085334f4e6da87a9f1"
-                urls.add(url)
-                
-                # Add headers for each URL
-                referer_value = f"https://www.pixiv.net/tags/{encoded_tag}/novels"
-                additional_headers.append({
-                    "Referer": referer_value,
-                    "x-requested-with": "XMLHttpRequest",
-                    "COOKIE": user_config.cookie,
-                })
-        
-        printInfo(f"{download_config.num_threads} threads are used to collect recommendations")
-        
-        with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
-            with tqdm.tqdm(total=len(urls), desc="Collecting recommendations") as pbar:
-                # Submit all tasks
-                futures_list = [
-                    executor.submit(collect, url, selectRecommends, header)
-                    for url, header in zip(urls, additional_headers)
+        # Process the IDs and send to Kafka
+        if self.send_to_kafka:
+            output_dir = os.path.join(download_config.store_path, "novels_recommend_json") 
+            printInfo(f"{download_config.num_threads} threads are used to process novels")
+            
+            with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
+                future_list2 = [
+                    executor.submit(fetchNovelAndSaveToJson, novel_id, output_dir, self.send_to_kafka, self.kafka_topic)
+                    for novel_id in all_novel_ids
                 ]
-                
-                # Collect results
-                for future in futures.as_completed(futures_list):
-                    body_data = future.result()
-                    if body_data is not None and "novel" in body_data and "data" in body_data["novel"]:
-                        novels_data = body_data["novel"]["data"]
-                        
-                        # Add to total dataset
-                        all_novel_data.extend(novels_data)
-                        
-                        # Extract novel IDs
-                        for novel in novels_data:
-                            if "novelId" in novel:
-                                all_novel_ids.add(novel["novelId"])
-                            elif "id" in novel:
-                                all_novel_ids.add(novel["id"])
-                            elif "latestEpisodeId" in novel:
-                                all_novel_ids.add(novel["latestEpisodeId"])
-                    
-                    pbar.update(1)
-
-                if self.send_to_kafka:
-                    output_dir = os.path.join(download_config.store_path, "novels_recommend_json") 
-                    with futures.ThreadPoolExecutor(download_config.num_threads) as executor:
-                        future_list2 = [
-                            executor.submit(fetchNovelAndSaveToJson, novel_id, output_dir, self.send_to_kafka, self.kafka_topic)
-                            for novel_id in all_novel_ids
-                        ]
-                        with tqdm.tqdm(total=len(all_novel_ids), desc="Fetching novel JSON") as pbar:
-                            for _ in futures.as_completed(future_list2):
-                                pbar.update(1)
-        
-        # Save complete data to JSON file
-        with open("novels_from_recommends.json", "w", encoding="utf-8") as f:
-            json.dump(all_novel_data, f, indent=4, ensure_ascii=False)
+                with tqdm.tqdm(total=len(all_novel_ids), desc="Fetching novel JSON") as pbar:
+                    for _ in futures.as_completed(future_list2):
+                        pbar.update(1)
         
         # Save ID list
-        self._save_to_json(all_novel_ids, "novel_ids_from_recommends.json")
+        self._save_to_json(all_novel_ids, "novel_ids_from_file.json")
         
-        printInfo(f"Collected {len(all_novel_data)} novel entries with {len(all_novel_ids)} unique IDs")
+        printInfo(f"Processed {len(all_novel_ids)} unique novel IDs")
         
         # Add to collector for further processing
         self.collector.add(all_novel_ids)
         
-        printInfo(f"===== Collection complete =====")
+        printInfo(f"===== Processing complete =====")
 
     def _process_tag_page(self, tag: str, page: int):
         """
